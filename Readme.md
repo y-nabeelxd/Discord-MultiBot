@@ -1,97 +1,108 @@
-# Discord-MultiBot-py 🤖
+# Discord MultiBot (Python)
 
-A versatile Discord bot with **Roblox verification**, **music playback**, **moderation tools**, and fun commands. Designed for easy setup and customization.
+**Author:** [y-nabeelxd](https://github.com/y-nabeelxd) 
+A **feature-rich Discord bot** made with **Python** and **discord.py**.
 
----
-
-## 🜠 Features
-- **🔒 Roblox Verification** *(Working perfectly!)*  
-  Verify users via Roblox profile with a secure code system.
-- **🎵 Music Player**  
-  Play songs from YouTube without API keys/cookies.
-- **🛡️ Moderation**  
-  Kick, ban, timeout, slowmode, and role management.
-- **🎮 Fun & Games**  
-  Rock-paper-scissors, dice rolls, coin flips, and more.
-- **🚙️ Utility**  
-  Polls, reminders, server/user info, and avatar commands.
-
-> **⚠️ Note:**  
-> FiveM, SA:MP, and Valorant verifications are **currently under maintenance** and will be fixed in a future update.
+This bot comes with **music playback**, **Roblox verification**, **moderation tools**, and **fun commands**.
+> ⚠️ *Currently, FiveM, SA:MP, and Valorant verifications are under maintenance (fix coming soon).*
 
 ---
 
-## 🛠️ Installation
-
-1. **Clone the repository**:  
-    ```
-    git clone https://github.com/y-nabeelxd/Discord-MultiBot-py
-    cd Discord-MultiBot-py
-    ```
-
-2. **Install dependencies**:  
-    ```
-    pip install -r requirements.txt
-    ```
-
-3. **Configure the bot**:  
-   - Rename `.env.example` to `.env` and add your bot token:  
-     ```
-     DISCORD_TOKEN=your_bot_token_here
-     ```
-   - In `bot.py`, change the prefix (line 151):  
-     ```
-     PREFIX = "!"  # Change to your desired prefix
-     ```
-
-4. **Run the bot**:  
-    ```bash
-    python bot.py
-    ```
+## ✨ Features
+- **🎵 Music Player** — Play songs from YouTube (no cookies, API keys, or tokens needed)
+- **🛡️ Moderation Tools** — Ban, kick, timeout, slowmode, set nicknames, and manage roles
+- **🔒 Roblox Verification** — Fully working Roblox verification system
+- **⛔ Under Maintenance:** FiveM, SA:MP, and Valorant verification features
+- **🎮 Fun & Mini Games** — Rock-Paper-Scissors, Dice rolls, Coin flips, Guessing game
+- **📊 Polls & Utilities** — Create polls, reminders, server info, and user info
+- **📈 Future Plans** — More useful and better commands will be added soon!
 
 ---
 
-## 🚙️ Configuration
-
-### 🔧 Key Settings (in `bot.py`)
-| Variable                | Description                                                 |
-|------------------------|-----------------------------------------------------------------------------|
-| `PREFIX = "!"`           | Change the bot's command prefix (line 115).                     |
-| `VERIFICATION_ROBLOX`  | Set to `False` to disable Roblox verification (line 13).               |
-| `ROBLOX_ROLE_ID`      | Add a role ID to assign upon verification (line 22).                |
-| `CHANGE_NICKNAME`     | Set to `True` to update nicknames after verification (line 16).        |
-
-> **🔐 Token Security**: Always keep your bot token in `.env` and never share it!
+## 📂 Project Structure
+```
+Discord-MultiBot-py/
+├── bot.py
+├── requirements.txt
+└── README.md
+```
 
 ---
 
-## 🎚️ Command Categories
+## ⚙️ Setup & Installation
+1. **Clone the repository:**
+```
+git clone https://github.com/y-nabeelxd/Discord-MultiBot-py
+cd Discord-MultiBot-py
+```
+2. **Install dependencies:**
+```
+pip install -r requirements.txt
+```
+3. **Edit bot configuration:**
+- **Bot Token:** 
+Open `bot.py` and replace:
+```
+TOKEN = os.getenv('DISCORD_TOKEN') or 'BOT_TOKEN'
+```
+with your bot token inside 'BOT_TOKEN' or set DISCORD_TOKEN as an environment variable.
+- **Prefix:**
+Change the command prefix:
+```
+PREFIX = "!"
+```
+(This is around line **151** in `bot.py`)
 
-### 🎵 Music Commands
-- `!play [song]` - Play a song or add to queue.  
-- `!skip` - Skip the current song.  
-- `!queue` - Show the current queue.  
-
-### 🔒 Verification (Roblox Only)
-- `!verifyroblox [username]` - Start Roblox verification.  
-
-### 🛡️ Moderation
-- `!kick @user [reason]` - Kick a member.  
-- `!ban @user [reason]` - Ban a member.  
-- `!slowmode 30s` - Set channel slowmode.  
-
-### 🎮 Fun & Games
-- `!rps rock` - Play rock-paper-scissors.  
-- `!roll 2d20` - Roll dice.  
+4. **Run the bot:**
+```
+python bot.py
+```
 
 ---
 
-## 🚀 Future Plans
-- [ ] Fix FiveM/SA:MP/Valorant verification.  
-- [ ] Add more music sources (Spotify, SoundCloud).  
-- [ ] Advanced moderation logs.  
+## 🎵 Music Commands
+- `!play <song>` — Play a song or add to queue 
+- `!skip` — Skip current song 
+- `!pause` — Pause playback 
+- `!resume` — Resume playback 
+- `!queue` — Show current queue 
+- `!stop` — Stop playback and clear queue 
+- `!leave` — Make the bot leave the voice channel 
 
 ---
 
-## 📜 License
-MIT © [y-nabeelxd](https://github.com/y-nabeelxd)  
+## 🛡️ Moderation Commands
+- `!ban @user [reason]` — Ban a member 
+- `!kick @user [reason]` — Kick a member 
+- `!timeout @user 30m [reason]` — Timeout a member 
+- `!slowmode 30s` — Set channel slowmode 
+- `!addrole @user @Role` — Add a role 
+- `!removerole @user @Role` — Remove a role 
+- `!setnick @user NewName` — Change nickname 
+
+---
+
+## 🔒 Verification
+- **Roblox**: `!verifyroblox <username>` (Working ✅) 
+- **FiveM**: `!verifyfivem <username>` (Under Maintenance ❌) 
+- **SA:MP**: `!verifysamp <username>` (Under Maintenance ❌) 
+- **Valorant**: `!verifyvalo <Username#Tag>` (Under Maintenance ❌) 
+
+---
+
+## ⚠️ Current Status
+- **Roblox Verification**: **Working Perfectly** ✅ 
+- **FiveM, SA:MP, Valorant**: **Currently unavailable (fix in progress)** ❌ 
+
+---
+
+## 🛠 Future Updates
+- Advanced moderation tools 
+- New verification systems 
+- More fun commands & games 
+
+---
+
+## 👤 Author
+**[y-nabeelxd](https://github.com/y-nabeelxd)** 
+_If you like this project, star ⭐ the repository!_
