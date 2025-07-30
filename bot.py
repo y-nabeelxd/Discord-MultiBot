@@ -19,22 +19,30 @@ import socket
 import struct
 
 # --- Configuration ---
-# Verification system settings
-VERIFICATION_FIVEM = False
-VERIFICATION_VALO = False
-VERIFICATION_SAMP = True
-VERIFICATION_ROBLOX = True
-CHANGE_NICKNAME = False
-RIOT_API_KEY = None
-FIVEM_SERVER = None  # Set your FiveM server IP:PORT
+VERIFICATION_FIVEM = True
+FIVEM_VERIFICATION_DISCORD_REQUIRED = False  # Set to True if Discord ID must match in-game
+FIVEM_ROLE_ID = None
+FIVEM_SERVER = None  # Set your FiveM server "IP:PORT"
+VERIFICATION_ROBLOX = False
+ROBLOX_ROLE_ID = None
+VERIFICATION_SAMP = False
+SAMP_ROLE_ID = None
 SAMP_SERVER_IP = None
 SAMP_SERVER_PORT = None
+VERIFICATION_VALO = False
+RIOT_API_KEY = None
 VALORANT_ROLE_ID = None
-FIVEM_ROLE_ID = None
-SAMP_ROLE_ID = None
-ROBLOX_ROLE_ID = None
-
 REGIONS = ["americas", "europe", "asia"]  # For Valorant API
+CHANGE_NICKNAME = False
+BOT_OWNER = None  # Bot Owner ID
+EXTRA_ROLES_LOCK_UNLOCK = None  # Set this if you want to more role to lock/unlock
+GAME_PREFIX = "owo"  # Can be changed to "XD" or any other prefix
+COINFLIP_GIF = "https://cdn.dribbble.com/userupload/20764551/file/original-ec7c7b25323fea450739f13b38db735f.gif"
+PREFIX = "!"
+intents = discord.Intents.all()
+
+if not os.path.exists('db'):
+    os.makedirs('db')
 
 def clear_console():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -63,6 +71,29 @@ def beautiful_print(message, box_char="═", padding=1):
             centered_message.append('')
     
     print(f"{padding_lines}{box_line}\n" + "\n".join(centered_message) + f"\n{box_line}{padding_lines}")
+    
+def format_uptime(seconds):
+    """Convert seconds to human-readable format (days, hours, minutes)"""
+    if seconds is None or isinstance(seconds, str) and not seconds.isdigit():
+        return "N/A"
+    
+    try:
+        seconds = int(seconds)
+        days, remainder = divmod(seconds, 86400)
+        hours, remainder = divmod(remainder, 3600)
+        minutes, _ = divmod(remainder, 60)
+        
+        parts = []
+        if days > 0:
+            parts.append(f"{days}d")
+        if hours > 0:
+            parts.append(f"{hours}h")
+        if minutes > 0 or not parts:
+            parts.append(f"{minutes}m")
+            
+        return " ".join(parts)
+    except:
+        return "N/A"
 
 async def query_samp(ip: str, port: int):
     """Query SA-MP server using samp-query library"""
@@ -88,15 +119,92 @@ async def get_valorant_account(username: str, tag: str):
                     return await resp.json()
     return None
 
-async def get_fivem_players():
-    if not FIVEM_SERVER:
+async def get_fivem_players(server_address=None):
+    """Get FiveM players with enhanced information"""
+    server = server_address or FIVEM_SERVER
+    if not server:
         return []
         
-    async with aiohttp.ClientSession() as session:
-        async with session.get(f"http://{FIVEM_SERVER}/players.json") as resp:
-            if resp.status == 200:
-                return await resp.json()
-    return []
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"http://{server}/players.json", 
+                                 headers={"Accept": "application/json"}) as resp:
+                players = await resp.json(content_type=None) if resp.status == 200 else []
+                    
+            async with session.get(f"http://{server}/info.json",
+                                 headers={"Accept": "application/json"}) as resp:
+                info = await resp.json(content_type=None) if resp.status == 200 else {}
+                    
+            async with session.get(f"http://{server}/dynamic.json",
+                                 headers={"Accept": "application/json"}) as resp:
+                dynamic = await resp.json(content_type=None) if resp.status == 200 else {}
+                    
+            for player in players:
+                player['server_info'] = info
+                player['server_dynamic'] = dynamic
+                
+            return players
+    except Exception as e:
+        print(f"Error getting FiveM players: {e}")
+        return []
+
+async def get_fivem_player_by_identifier(identifier, server_address=None):
+    """Get a FiveM player by identifier (name or ID)"""
+    players = await get_fivem_players(server_address)
+    if not players:
+        return None
+    
+    for player in players:
+        if str(player.get('id')) == str(identifier):
+            return player
+    
+    for player in players:
+        if player.get('name', '').lower() == str(identifier).lower():
+            return player
+    
+    return None
+
+async def get_fivem_server_info(server_address=None):
+    """Get detailed FiveM server information"""
+    server = server_address or FIVEM_SERVER
+    if not server:
+        return None
+        
+    try:
+        async with aiohttp.ClientSession() as session:
+            info_url = f"http://{server}/info.json"
+            dynamic_url = f"http://{server}/dynamic.json"
+            players_url = f"http://{server}/players.json"
+            
+            headers = {"Accept": "application/json"}
+            
+            info, dynamic, players = await asyncio.gather(
+                session.get(info_url, headers=headers),
+                session.get(dynamic_url, headers=headers),
+                session.get(players_url, headers=headers)
+            )
+            
+            info_data = await info.json(content_type=None) if info.status == 200 else {}
+            dynamic_data = await dynamic.json(content_type=None) if dynamic.status == 200 else {}
+            players_data = await players.json(content_type=None) if players.status == 200 else []
+            
+            uptime = info_data.get('vars', {}).get('Uptime')
+            
+            if uptime is not None:
+                uptime = format_uptime(uptime)
+            else:
+                uptime = "N/A"
+            
+            return {
+                'info': info_data,
+                'dynamic': dynamic_data,
+                'players': players_data,
+                'status': 'online' if info.status == 200 else 'offline',
+                'uptime': uptime
+            }
+    except Exception as e:
+        print(f"Error getting FiveM server info: {e}")
+        return None
 
 async def get_roblox_profile(username: str):
     """Get Roblox profile information"""
@@ -148,14 +256,37 @@ async def send_to_owner(guild: discord.Guild, embed: discord.Embed):
     except Exception as e:
         print(f"Could not DM owner: {e}")
 
-PREFIX = "!"
-intents = discord.Intents.all()
+def get_owo_data():
+    try:
+        with open('db/owo_data.json', 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def save_owo_data(data):
+    with open('db/owo_data.json', 'w') as f:
+        json.dump(data, f, indent=4)
+
+def get_fivem_verification_data():
+    try:
+        with open('db/fivem.json', 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def save_fivem_verification_data(data):
+    with open('db/fivem.json', 'w') as f:
+        json.dump(data, f, indent=4)
 
 discord.utils.setup_logging(level=logging.INFO, root=False)
 logger = logging.getLogger('discord')
 logger.setLevel(logging.WARNING)
 
 class MyBot(commands.Bot):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fivem_status_tasks = {}
+    
     async def on_connect(self):
         clear_console()
         beautiful_print("🔌 Connecting to Discord Bot...", "─")
@@ -268,34 +399,374 @@ async def start_idle_timer(guild_id):
     
     idle_timers[guild_id] = asyncio.create_task(idle_task())
 
-# --- Verification Commands ---
-class RobloxConfirmationView(discord.ui.View):
-    """View for Roblox account confirmation"""
-    def __init__(self, ctx, profile):
-        super().__init__(timeout=60)
+class FiveMVerificationView(discord.ui.View):
+    """View for FiveM verification confirmation"""
+    def __init__(self, ctx, player_data, server_address=None):
+        super().__init__(timeout=300)
         self.ctx = ctx
-        self.profile = profile
-        self.confirmed = None
+        self.player_data = player_data
+        self.server_address = server_address or FIVEM_SERVER
+        self.message = None
+        self.verified = False
     
-    @discord.ui.button(label="✅ It's Me", style=discord.ButtonStyle.success)
-    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def on_timeout(self):
+        if not self.verified and self.message:
+            try:
+                await self.message.delete()
+            except:
+                pass
+    
+    @discord.ui.button(label="Verify", style=discord.ButtonStyle.success, emoji="✅")
+    async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user != self.ctx.author:
             return await interaction.response.send_message("You're not the one verifying!", ephemeral=True)
         
-        self.confirmed = True
-        self.stop()
-        await interaction.message.delete()
-        await interaction.response.send_message("✅ Verification process started! Please check your messages.", ephemeral=True)
+        role = None
+        if FIVEM_ROLE_ID:
+            role = self.ctx.guild.get_role(FIVEM_ROLE_ID)
+        else:
+            for r in self.ctx.guild.roles:
+                if r.name.lower() not in ["@everyone", "bot"] and r < self.ctx.guild.me.top_role:
+                    role = r
+                    break
+        
+        if not role:
+            return await interaction.response.send_message("❌ No valid role found to assign!", ephemeral=True)
+        
+        try:
+            await self.ctx.author.add_roles(role)
+            
+            if CHANGE_NICKNAME:
+                try:
+                    await self.ctx.author.edit(nick=self.player_data['name'])
+                except discord.Forbidden:
+                    pass
+            
+            fivem_data = get_fivem_verification_data()
+            user_id = str(self.ctx.author.id)
+            
+            if user_id not in fivem_data:
+                fivem_data[user_id] = {}
+            
+            fivem_data[user_id] = {
+                'player_id': self.player_data.get('id'),
+                'player_name': self.player_data.get('name'),
+                'verified_at': datetime.datetime.now().isoformat(),
+                'identifiers': self.player_data.get('identifiers', [])
+            }
+            
+            save_fivem_verification_data(fivem_data)
+            
+            embed = discord.Embed(
+                title="✅ FiveM Verification Complete",
+                description=f"Connected to `{self.player_data['name']}`",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="Player ID", value=self.player_data.get('id', 'N/A'), inline=True)
+            embed.add_field(name="Server", value=self.server_address, inline=True)
+            
+            identifiers = self.player_data.get('identifiers', [])
+            if identifiers:
+                embed.add_field(name="Identifiers", value="\n".join(identifiers), inline=False)
+            
+            self.verified = True
+            
+            try:
+                await interaction.message.delete()
+            except:
+                pass
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            
+            public_msg = await self.ctx.send(
+                f"Connected to {self.player_data.get('id', 'N/A')} | {self.player_data['name']} > {self.ctx.author.mention}"
+            )
+            
+            await asyncio.sleep(600)
+            try:
+                await public_msg.edit(content=f"Connected to {self.player_data['name']} > {self.ctx.author.mention}")
+            except:
+                pass
+            
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Verification failed: {e}", ephemeral=True)
     
-    @discord.ui.button(label="❌ Not Me", style=discord.ButtonStyle.danger)
-    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="🔄 Retry", style=discord.ButtonStyle.secondary, emoji="🔄")
+    async def retry_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user != self.ctx.author:
             return await interaction.response.send_message("You're not the one verifying!", ephemeral=True)
         
-        self.confirmed = False
-        self.stop()
-        await interaction.message.delete()
-        await interaction.response.send_message("❌ Account verification cancelled. Please try again with the correct username.", ephemeral=True)
+        await interaction.response.defer()
+        
+        player = await get_fivem_player_by_identifier(
+            self.player_data.get('id') or self.player_data.get('name'),
+            self.server_address
+        )
+        
+        if not player:
+            embed = discord.Embed(
+                title="❌ Verification Failed",
+                description="Could not find your player on the server. Please ensure:\n"
+                           "1. You are connected to the game\n"
+                           "2. You used the correct player name/ID\n"
+                           "3. The server is online",
+                color=discord.Color.red()
+            )
+            await interaction.message.edit(embed=embed, view=None)
+            return
+        
+        self.player_data = player
+        
+        identifiers = player.get('identifiers', [])
+        discord_id = None
+        for ident in identifiers:
+            if ident.startswith('discord:'):
+                discord_id = ident.split(':')[1]
+                break
+        
+        if FIVEM_VERIFICATION_DISCORD_REQUIRED and (not discord_id or str(self.ctx.author.id) != discord_id):
+            embed = discord.Embed(
+                title="❌ Discord Verification Required",
+                description="We couldn't verify your Discord ID in-game.\n\n" \
+                           "Please ensure:\n" \
+                           "1. You have linked your Discord account in-game\n" \
+                           "2. You are currently online on the server\n" \
+                           "3. You used the correct player name/ID",
+                color=discord.Color.red()
+            )
+            await interaction.message.edit(embed=embed, view=self)
+            await interaction.followup.send("❌ Couldn't verify your Discord ID. Please check the instructions.", ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title="🔍 FiveM Verification",
+            color=discord.Color.blue()
+        )
+        
+        if discord_id and str(self.ctx.author.id) == discord_id:
+            embed.description = f"We found your account: **{player['name']}**"
+            embed.add_field(name="Player ID", value=player.get('id', 'N/A'), inline=True)
+            embed.add_field(name="FiveM ID", value=discord_id or "Not linked", inline=True)
+            
+            platforms = []
+            for ident in identifiers:
+                if ident.startswith('steam:'):
+                    platforms.append("Steam")
+                elif ident.startswith('license:'):
+                    platforms.append("Rockstar")
+                elif ident.startswith('xbl:'):
+                    platforms.append("Xbox Live")
+                elif ident.startswith('live:'):
+                    platforms.append("Microsoft")
+                elif ident.startswith('ip:'):
+                    platforms.append(f"IP: {ident[3:]}")
+            
+            if platforms:
+                embed.add_field(name="Platforms", value=", ".join(platforms), inline=False)
+            
+            await interaction.message.edit(embed=embed, view=self)
+            await interaction.followup.send("✅ Found your account! Please verify now.", ephemeral=True)
+        else:
+            if FIVEM_VERIFICATION_DISCORD_REQUIRED:
+                embed.description = "We couldn't verify your Discord ID in-game.\n\n" \
+                                   "Please ensure:\n" \
+                                   "1. You have linked your Discord account in-game\n" \
+                                   "2. You are currently online on the server\n" \
+                                   "3. You used the correct player name/ID"
+            else:
+                embed.description = f"We found your account: **{player['name']}**\n\n" \
+                                   "Click Verify to complete the process"
+                embed.add_field(name="Player ID", value=player.get('id', 'N/A'), inline=True)
+                embed.add_field(name="FiveM ID", value=discord_id or "Not linked", inline=True)
+            
+            await interaction.message.edit(embed=embed, view=self)
+            await interaction.followup.send("Please verify now.", ephemeral=True)
+
+@bot.command()
+async def verifyfivem(ctx, *, identifier: str):
+    """Verify your FiveM account. Usage: !verifyfivem <player name or ID>"""
+    if not VERIFICATION_FIVEM:
+        return await ctx.send("❌ FiveM verification is currently disabled.", delete_after=10)
+    
+    if not FIVEM_SERVER:
+        return await ctx.send("❌ FiveM server is not configured.", delete_after=10)
+    
+    try:
+        await ctx.message.delete()
+    except:
+        pass
+    
+    fivem_data = get_fivem_verification_data()
+    user_id = str(ctx.author.id)
+    
+    if FIVEM_ROLE_ID and discord.utils.get(ctx.author.roles, id=FIVEM_ROLE_ID):
+        if user_id in fivem_data:
+            player = await get_fivem_player_by_identifier(identifier)
+            if player and str(player.get('id')) == str(fivem_data[user_id].get('player_id')):
+                return await ctx.send(f"You're already verified as {fivem_data[user_id].get('player_name')}!", delete_after=10)
+            else:
+                await ctx.author.remove_roles(discord.utils.get(ctx.guild.roles, id=FIVEM_ROLE_ID))
+                if user_id in fivem_data:
+                    del fivem_data[user_id]
+                    save_fivem_verification_data(fivem_data)
+        else:
+            await ctx.author.remove_roles(discord.utils.get(ctx.guild.roles, id=FIVEM_ROLE_ID))
+    
+    if user_id in fivem_data:
+        player = await get_fivem_player_by_identifier(identifier)
+        if player and str(player.get('id')) == str(fivem_data[user_id].get('player_id')):
+            if FIVEM_ROLE_ID:
+                role = ctx.guild.get_role(FIVEM_ROLE_ID)
+                await ctx.author.add_roles(role)
+                if CHANGE_NICKNAME:
+                    try:
+                        await ctx.author.edit(nick=fivem_data[user_id].get('player_name'))
+                    except discord.Forbidden:
+                        pass
+                return await ctx.send(f"✅ You're already verified as {fivem_data[user_id].get('player_name')}! Role restored.", delete_after=10)
+        else:
+            del fivem_data[user_id]
+            save_fivem_verification_data(fivem_data)
+    
+    msg = await ctx.send("🔍 Searching for your FiveM player...")
+    
+    player = await get_fivem_player_by_identifier(identifier)
+    
+    if not player:
+        embed = discord.Embed(
+            title="❌ Player Not Found",
+            description="Could not find this player on the server. Please ensure:\n"
+                       "1. You are connected to the game\n"
+                       "2. You used the correct player name/ID\n"
+                       "3. The server is online",
+            color=discord.Color.red()
+        )
+        return await msg.edit(embed=embed)
+    
+    identifiers = player.get('identifiers', [])
+    discord_id = None
+    for ident in identifiers:
+        if ident.startswith('discord:'):
+            discord_id = ident.split(':')[1]
+            break
+    
+    embed = discord.Embed(
+        title="🔍 FiveM Verification",
+        color=discord.Color.blue()
+    )
+    
+    if discord_id and str(ctx.author.id) == discord_id:
+        embed.description = f"We found your account: **{player['name']}**"
+        embed.add_field(name="Player ID", value=player.get('id', 'N/A'), inline=True)
+        embed.add_field(name="FiveM ID", value=discord_id, inline=True)
+        
+        platforms = []
+        for ident in identifiers:
+            if ident.startswith('steam:'):
+                platforms.append("Steam")
+            elif ident.startswith('license:'):
+                platforms.append("Rockstar")
+            elif ident.startswith('xbl:'):
+                platforms.append("Xbox Live")
+            elif ident.startswith('live:'):
+                platforms.append("Microsoft")
+            elif ident.startswith('ip:'):
+                platforms.append(f"IP: {ident[3:]}")
+        
+        if platforms:
+            embed.add_field(name="Platforms", value=", ".join(platforms), inline=False)
+    else:
+        if FIVEM_VERIFICATION_DISCORD_REQUIRED:
+            embed.description = "We couldn't verify your Discord ID in-game.\n\n" \
+                               "Please ensure:\n" \
+                               "1. You have linked your Discord account in-game\n" \
+                               "2. You are currently online on the server\n" \
+                               "3. You used the correct player name/ID"
+        else:
+            embed.description = f"We found your account: **{player['name']}**\n\n" \
+                               "Click Verify to complete the process"
+            embed.add_field(name="Player ID", value=player.get('id', 'N/A'), inline=True)
+            embed.add_field(name="FiveM ID", value=discord_id or "Not linked", inline=True)
+    
+    view = FiveMVerificationView(ctx, player)
+    view.message = await msg.edit(embed=embed, view=view)
+
+@bot.command()
+async def fivemserverlive(ctx, channel: discord.TextChannel = None):
+    """Post live FiveM server status in a channel. Usage: !fivemserverlive [#channel]"""
+    if not VERIFICATION_FIVEM or not FIVEM_SERVER:
+        return await ctx.send("❌ FiveM verification is not enabled or server not configured.", delete_after=10)
+    
+    target_channel = channel or ctx.channel
+    
+    if target_channel.id in bot.fivem_status_tasks:
+        return await ctx.send("❌ There's already a live status in that channel!", delete_after=10)
+    
+    embed = discord.Embed(title="🔄 Fetching server status...", color=discord.Color.blue())
+    status_msg = await target_channel.send(embed=embed)
+    
+    async def update_status():
+        while True:
+            try:
+                server_info = await get_fivem_server_info()
+                if not server_info:
+                    embed = discord.Embed(
+                        title="Server Status",
+                        description="🔴 Server offline or unreachable",
+                        color=discord.Color.red()
+                    )
+                else:
+                    embed = discord.Embed(
+                        title="Server Status",
+                        color=discord.Color.green() if server_info['status'] == 'online' else discord.Color.red()
+                    )
+                    embed.add_field(name="Server Name", value=server_info['dynamic'].get('hostname', 'N/A'), inline=False)
+                    embed.add_field(
+                        name="Server Status", 
+                        value="🟢 Online" if server_info['status'] == 'online' else "🔴 Offline", 
+                        inline=True
+                    )
+                    embed.add_field(
+                        name="Uptime", 
+                        value=format_uptime(server_info.get('uptime')), 
+                        inline=True
+                    )
+                    embed.add_field(
+                        name="F8 Command", 
+                        value=f"connect {FIVEM_SERVER}", 
+                        inline=False
+                    )
+                    
+                    players = server_info.get('players', [])
+                    embed.add_field(
+                        name=f"Citizens ({len(players)}/{server_info['dynamic'].get('sv_maxclients', 'N/A')})", 
+                        value="\n".join([f"[{p.get('id', '?')}] | {p.get('name', 'Unknown')}" for p in players]) if players else "No players online",
+                        inline=False
+                    )
+                
+                await status_msg.edit(embed=embed)
+                await asyncio.sleep(60)
+            
+            except Exception as e:
+                print(f"Error updating server status: {e}")
+                await asyncio.sleep(60)
+    
+    task = bot.loop.create_task(update_status())
+    bot.fivem_status_tasks[target_channel.id] = {
+        'task': task,
+        'message': status_msg
+    }
+    
+    await ctx.message.add_reaction("✅")
+    
+    async def stop_updates():
+        if target_channel.id in bot.fivem_status_tasks:
+            task = bot.fivem_status_tasks[target_channel.id]['task']
+            task.cancel()
+            del bot.fivem_status_tasks[target_channel.id]
+            await status_msg.edit(content="Live updates stopped.", embed=None)
+    
+    bot.fivem_status_tasks[target_channel.id]['stop'] = stop_updates
 
 @bot.command()
 async def sampstatus(ctx):
@@ -401,7 +872,7 @@ async def verifyroblox(ctx, *, username: str):
     start_time = time.time()
     verified = False
     
-    while time.time() - start_time < 120:  # 2 minutes
+    while time.time() - start_time < 120:
         await asyncio.sleep(5)
         
         current_profile = await get_roblox_profile(username)
@@ -524,53 +995,6 @@ async def verifyvalo(ctx, *, riotid: str):
     await send_to_owner(ctx.guild, embed)
 
 @bot.command()
-async def verifyfivem(ctx, *, playername: str):
-    """Verify a FiveM account. Usage: !verifyfivem PlayerName"""
-    if not VERIFICATION_FIVEM:
-        return
-        
-    if not FIVEM_SERVER:
-        return await ctx.reply("❌ FiveM verification is currently disabled.")
-    
-    msg = await ctx.reply("🔍 Checking FiveM server...")
-    players = await get_fivem_players()
-    player = next((p for p in players if p['name'].lower() == playername.lower()), None)
-    if not player:
-        return await msg.edit(content="❌ You are not currently online on the FiveM server!")
-    
-    role = None
-    if FIVEM_ROLE_ID:
-        role = ctx.guild.get_role(FIVEM_ROLE_ID)
-    else:
-        for r in ctx.guild.roles:
-            if r.name.lower() not in ["@everyone", "bot"] and r < ctx.guild.me.top_role:
-                role = r
-                break
-    
-    if not role:
-        return await msg.edit(content="❌ No valid role found to assign!")
-    
-    await ctx.author.add_roles(role)
-    
-    if CHANGE_NICKNAME:
-        try:
-            await ctx.author.edit(nick=player['name'])
-        except discord.Forbidden:
-            pass
-    
-    identifiers = "\n".join(player.get("identifiers", []))
-    ping = player.get("ping", "N/A")
-
-    embed = discord.Embed(title="FiveM Verification Successful ✅", color=0x00aaff)
-    embed.add_field(name="Player Name", value=player['name'], inline=True)
-    embed.add_field(name="Ping", value=str(ping), inline=True)
-    embed.add_field(name="Identifiers", value=identifiers or "No identifiers", inline=False)
-    embed.set_footer(text=f"Verified by {ctx.author}")
-
-    await msg.edit(content=None, embed=embed)
-    await send_to_owner(ctx.guild, embed)
-
-@bot.command()
 async def verifysamp(ctx, *, playername: str):
     """Verify a SA-MP account. Usage: !verifysamp PlayerName"""
     if not VERIFICATION_SAMP:
@@ -637,7 +1061,6 @@ async def verifysamp(ctx, *, playername: str):
     except Exception as e:
         await msg.edit(content=f"❌ An error occurred: {str(e)}")
 
-# --- Music Player Commands ---
 class SongSelect(discord.ui.Select):
     def __init__(self, results, ctx):
         self.results = results
@@ -949,7 +1372,378 @@ async def leave(ctx):
     """Make the bot leave the voice channel. Usage: !leave"""
     await stop(ctx)
 
-# --- Moderation Commands ---
+@bot.command()
+@commands.has_permissions(manage_channels=True)
+async def lock(ctx, channel: discord.TextChannel = None, role: discord.Role = None):
+    """
+    Lock a channel for everyone or a specific role.
+    Usage: 
+    !lock - Locks current channel for everyone
+    !lock #channel - Locks mentioned channel for everyone
+    !lock #channel @role - Locks channel for specific role
+    """
+    target_channel = channel or ctx.channel
+    target_role = role or ctx.guild.default_role
+    
+    additional_roles = []
+    if EXTRA_ROLES_LOCK_UNLOCK:
+        additional_role = ctx.guild.get_role(EXTRA_ROLES_LOCK_UNLOCK)
+        if additional_role:
+            additional_roles.append(additional_role)
+    
+    try:
+        overwrite = target_channel.overwrites_for(target_role)
+        
+        overwrite.send_messages = False
+        
+        await target_channel.set_permissions(target_role, overwrite=overwrite)
+        
+        for role in additional_roles:
+            if role != target_role:
+                role_overwrite = target_channel.overwrites_for(role)
+                role_overwrite.send_messages = False
+                await target_channel.set_permissions(role, overwrite=role_overwrite)
+        
+        if target_role == ctx.guild.default_role:
+            await ctx.send(f"🔒 {target_channel.mention} has been locked for everyone!")
+        else:
+            await ctx.send(f"🔒 {target_channel.mention} has been locked for {target_role.mention}!")
+            
+    except discord.Forbidden:
+        await ctx.send("I don't have permission to lock this channel!")
+    except Exception as e:
+        await ctx.send(f"An error occurred: {e}")
+
+@bot.command()
+@commands.has_permissions(manage_channels=True)
+async def unlock(ctx, channel: discord.TextChannel = None, role: discord.Role = None):
+    """
+    Unlock a channel for everyone or a specific role.
+    Usage: 
+    !unlock - Unlocks current channel for everyone
+    !unlock #channel - Unlocks mentioned channel for everyone
+    !unlock #channel @role - Unlocks channel for specific role
+    """
+    target_channel = channel or ctx.channel
+    target_role = role or ctx.guild.default_role
+    
+    additional_roles = []
+    if EXTRA_ROLES_LOCK_UNLOCK:
+        additional_role = ctx.guild.get_role(EXTRA_ROLES_LOCK_UNLOCK)
+        if additional_role:
+            additional_roles.append(additional_role)
+    
+    try:
+        overwrite = target_channel.overwrites_for(target_role)
+        
+        overwrite.send_messages = None
+        
+        await target_channel.set_permissions(target_role, overwrite=overwrite)
+        
+        for role in additional_roles:
+            if role != target_role:
+                role_overwrite = target_channel.overwrites_for(role)
+                role_overwrite.send_messages = None
+                await target_channel.set_permissions(role, overwrite=role_overwrite)
+        
+        if target_role == ctx.guild.default_role:
+            await ctx.send(f"🔓 {target_channel.mention} has been unlocked for everyone!")
+        else:
+            await ctx.send(f"🔓 {target_channel.mention} has been unlocked for {target_role.mention}!")
+            
+    except discord.Forbidden:
+        await ctx.send("I don't have permission to unlock this channel!")
+    except Exception as e:
+        await ctx.send(f"An error occurred: {e}")
+
+# --- Owo Game Commands --- (Clone)
+@bot.command(name=f'{GAME_PREFIX}coinflip', aliases=[f'{GAME_PREFIX}cf'])
+async def owo_coinflip(ctx, amount: int, choice: str = None):
+    """
+    Flip a coin with your coins (optionally choose heads/tails).
+    Usage: 
+    owo coinflip <amount> [heads/tails]
+    Examples:
+    owo coinflip 100          - Random choice
+    owo coinflip 100 heads    - Bet on heads
+    owo coinflip 100 tails    - Bet on tails
+    """
+    if amount <= 0:
+        return await ctx.send("Amount must be positive!")
+    
+    data = get_owo_data()
+    user_id = str(ctx.author.id)
+    
+    if user_id not in data or data[user_id]['balance'] < amount:
+        return await ctx.send("You don't have enough coins!")
+    
+    if choice is not None:
+        choice = choice.lower()
+        if choice not in ['heads', 'tails']:
+            return await ctx.send("Please choose either 'heads' or 'tails' or leave it blank for random choice!")
+        was_random = False
+    else:
+        choice = random.choice(['heads', 'tails'])
+        was_random = True
+    
+    embed = discord.Embed(
+        title="🪙 Coin Flip",
+        color=discord.Color.gold()
+    )
+    if was_random:
+        embed.description = f"**{ctx.author.display_name}** flips a coin for {amount} coins (random choice)..."
+    else:
+        embed.description = f"**{ctx.author.display_name}** flips a coin for {amount} coins (betting on {choice})..."
+    
+    embed.set_image(url=COINFLIP_GIF)
+    msg = await ctx.send(embed=embed)
+    
+    await asyncio.sleep(3)
+    
+    result = random.choice(['heads', 'tails'])
+    
+    if was_random:
+        
+        won = True
+        winnings = amount * 1.5  # 1.5x payout for random
+    else:
+        won = choice == result
+        winnings = amount * 2 if won else 0
+    
+    if won:
+        net_gain = winnings - amount
+        data[user_id]['balance'] += net_gain
+        if was_random:
+            outcome = f"**Random choice won!** The coin landed on {result} (1.5x payout)!"
+        else:
+            outcome = f"**You won!** The coin landed on {result}!"
+    else:
+        data[user_id]['balance'] -= amount
+        outcome = f"**You lost!** The coin landed on {result}."
+    
+    save_owo_data(data)
+    
+    embed = discord.Embed(
+        title="🪙 Coin Flip Result",
+        description=outcome,
+        color=discord.Color.gold() if won else discord.Color.red()
+    )
+    
+    if not was_random:
+        embed.add_field(name="Your Choice", value=choice.capitalize(), inline=True)
+    else:
+        embed.add_field(name="Random Choice", value=choice.capitalize(), inline=True)
+    
+    embed.add_field(name="Actual Result", value=result.capitalize(), inline=True)
+    
+    if won:
+        embed.add_field(name="Winnings", value=f"+{net_gain} coins", inline=False)
+    
+    embed.add_field(name="New Balance", value=f"{data[user_id]['balance']} coins", inline=False)
+    
+    await msg.edit(embed=embed)
+
+@bot.command(name=f'{GAME_PREFIX}slots', aliases=[f'{GAME_PREFIX}s'])
+async def owo_slots(ctx, amount: int):
+    """Play slots with your coins. Usage: owo slots <amount> or owo s <amount>"""
+    if amount <= 0:
+        return await ctx.send("Amount must be positive!")
+    
+    data = get_owo_data()
+    user_id = str(ctx.author.id)
+    
+    if user_id not in data or data[user_id]['balance'] < amount:
+        return await ctx.send("You don't have enough coins!")
+    
+    emojis = ["🍎", "🍒", "🍋", "🍉", "🍇", "7️⃣"]
+    weights = [0.25, 0.25, 0.2, 0.15, 0.1, 0.05]  # 7 is rarest
+    
+    losing_streak = data[user_id].get('slots_losing_streak', 0)
+    adjusted_weights = [w * (1 + losing_streak * 0.1) for w in weights]
+    
+    embed = discord.Embed(
+        title="🎰 Slots Spinning...",
+        description="[ 🎰 | 🎰 | 🎰 ]",
+        color=discord.Color.gold()
+    )
+    msg = await ctx.send(embed=embed)
+    
+    for _ in range(3):
+        temp_slots = [random.choices(emojis, weights=adjusted_weights)[0] for _ in range(3)]
+        embed.description = f"[ {' | '.join(temp_slots)} ]"
+        await msg.edit(embed=embed)
+        await asyncio.sleep(0.5)
+    
+    slots = [random.choices(emojis, weights=adjusted_weights)[0] for _ in range(3)]
+    slot_display = " | ".join(slots)
+    
+    if slots[0] == slots[1] == slots[2]:
+        if slots[0] == "7️⃣":
+            multiplier = 10  # Jackpot!
+        else:
+            multiplier = 5
+        won = True
+        winnings = amount * multiplier
+        data[user_id]['slots_losing_streak'] = 0
+    elif slots[0] == slots[1] or slots[1] == slots[2] or slots[0] == slots[2]:
+        multiplier = 2
+        won = True
+        winnings = amount * multiplier
+        data[user_id]['slots_losing_streak'] = max(0, data[user_id].get('slots_losing_streak', 0) - 1)
+    else:
+        won = False
+        winnings = 0
+        data[user_id]['slots_losing_streak'] = data[user_id].get('slots_losing_streak', 0) + 1
+    
+    if won:
+        net_gain = winnings - amount
+        data[user_id]['balance'] += net_gain
+        outcome = f"**You won {winnings} coins!** (x{multiplier})"
+    else:
+        data[user_id]['balance'] -= amount
+        outcome = "**You lost!**"
+        if data[user_id]['slots_losing_streak'] >= 5:
+            consolation = min(amount, 100)
+            data[user_id]['balance'] += consolation
+            outcome += f"\nHere's {consolation} coins as a consolation prize!"
+    
+    save_owo_data(data)
+    
+    embed = discord.Embed(
+        title="🎰 Slots Result",
+        description=f"[ {slot_display} ]\n{outcome}",
+        color=discord.Color.gold() if won else discord.Color.red()
+    )
+    embed.add_field(name="Bet Amount", value=f"{amount} coins", inline=True)
+    if won:
+        embed.add_field(name="Winnings", value=f"{winnings} coins", inline=True)
+    embed.add_field(name="New Balance", value=f"{data[user_id]['balance']} coins", inline=False)
+    
+    await msg.edit(embed=embed)
+
+@bot.command(name=f'{GAME_PREFIX}daily')
+async def owo_daily(ctx):
+    """Claim your daily coins (300-5000). Usage: owo daily"""
+    data = get_owo_data()
+    user_id = str(ctx.author.id)
+    
+    if user_id not in data:
+        data[user_id] = {
+            'balance': 0,
+            'last_daily': None
+        }
+    
+    now = datetime.datetime.now()
+    if data[user_id]['last_daily']:
+        last_daily = datetime.datetime.fromisoformat(data[user_id]['last_daily'])
+        cooldown = datetime.timedelta(hours=24)
+        
+        if now - last_daily < cooldown:
+            remaining = cooldown - (now - last_daily)
+            return await ctx.send(f"⏳ You can claim your next daily in {remaining.seconds // 3600}h {(remaining.seconds % 3600) // 60}m!")
+    
+    amount = random.randint(300, 5000)
+    data[user_id]['balance'] += amount
+    data[user_id]['last_daily'] = now.isoformat()
+    
+    save_owo_data(data)
+    
+    embed = discord.Embed(
+        title="🎁 Daily Reward Claimed!",
+        description=f"You received **{amount} coins**!\nYour new balance is **{data[user_id]['balance']} coins**.",
+        color=discord.Color.green()
+    )
+    await ctx.send(embed=embed)
+
+@bot.command(name=f'{GAME_PREFIX}balance', aliases=[f'{GAME_PREFIX}bal'])
+async def owo_balance(ctx, member: discord.Member = None):
+    """Check your coin balance. Usage: owo balance [@user] or owo bal [@user]"""
+    target = member or ctx.author
+    data = get_owo_data()
+    user_id = str(target.id)
+    
+    if user_id not in data:
+        balance = 0
+    else:
+        balance = data[user_id]['balance']
+    
+    embed = discord.Embed(
+        title=f"💰 {target.display_name}'s Balance",
+        description=f"**{balance} coins**",
+        color=discord.Color.gold()
+    )
+    await ctx.send(embed=embed)
+
+@bot.command(name=f'{GAME_PREFIX}addcoin')
+@commands.is_owner()
+async def owo_addcoin(ctx, member: discord.Member, amount: int):
+    """Add coins to a user's balance (Bot owner only). Usage: owo addcoin @user <amount>"""
+    if ctx.author.id != BOT_OWNER:
+        return await ctx.send("Only the bot owner can use this command!")
+    
+    if amount <= 0:
+        return await ctx.send("Amount must be positive!")
+    
+    data = get_owo_data()
+    user_id = str(member.id)
+    
+    if user_id not in data:
+        data[user_id] = {
+            'balance': 0,
+            'last_daily': None
+        }
+    
+    data[user_id]['balance'] += amount
+    save_owo_data(data)
+    
+    embed = discord.Embed(
+        title="➕ Coins Added",
+        description=f"Added **{amount} coins** to {member.mention}'s balance.\nNew balance: **{data[user_id]['balance']} coins**",
+        color=discord.Color.green()
+    )
+    await ctx.send(embed=embed)
+
+@bot.command(name=f'{GAME_PREFIX}setgameprefix')
+@commands.is_owner()
+async def owo_setgameprefix(ctx, new_prefix: str):
+    """Change the game command prefix (Bot owner only). Usage: owo setgameprefix <new_prefix>"""
+    if ctx.author.id != BOT_OWNER:
+        return await ctx.send("Only the bot owner can use this command!")
+    
+    global GAME_PREFIX
+    old_prefix = GAME_PREFIX
+    GAME_PREFIX = new_prefix.lower()
+    
+    game_commands = [
+        owo_coinflip, owo_slots, owo_daily, 
+        owo_balance, owo_addcoin, owo_setgameprefix
+    ]
+    
+    for cmd in game_commands:
+        bot.remove_command(cmd.name)
+        
+        cmd_name = cmd.__name__.replace('owo_', '').replace(f'{old_prefix}_', '')
+        new_name = f"{GAME_PREFIX}{cmd_name}"
+        
+        new_cmd = commands.Command(
+            name=new_name,
+            callback=cmd.callback,
+            help=cmd.help,
+            aliases=getattr(cmd, 'aliases', []),
+            checks=cmd.checks
+        )
+        
+        if hasattr(cmd, 'aliases'):
+            new_cmd.aliases = [
+                alias.replace(old_prefix, GAME_PREFIX) 
+                for alias in cmd.aliases
+                if alias.startswith(old_prefix)
+            ]
+        
+        bot.add_command(new_cmd)
+    
+    await ctx.send(f"✅ Game command prefix changed from `{old_prefix}` to `{GAME_PREFIX}`")
+
 @bot.command()
 @commands.has_permissions(ban_members=True)
 async def ban(ctx, member: discord.Member, *, reason="No reason provided"):
@@ -1116,7 +1910,6 @@ async def removerole(ctx, member: discord.Member, *, role: discord.Role):
     except Exception as e:
         await ctx.send(f"❌ Failed to remove role: {e}")
 
-# --- Game Commands ---
 @bot.command(aliases=['rockpaperscissors'])
 async def rps(ctx, choice: str):
     """Play Rock Paper Scissors. Usage: !rps rock|paper|scissors"""
@@ -1178,8 +1971,8 @@ async def roll(ctx, dice: str = "1d6"):
         await ctx.send(f'Format must be NdN! Example: `{PREFIX}roll 2d20`')
 
 @bot.command(aliases=['flip'])
-async def coinflip(ctx):
-    """Flip a coin. Usage: !coinflip"""
+async def flipcoin(ctx):
+    """Flip a coin (no betting). Usage: !flipcoin"""
     result = random.choice(["Heads", "Tails"])
     embed = discord.Embed(
         title="🪙 Coin Flip",
@@ -1210,7 +2003,6 @@ async def guess(ctx, number: int):
     )
     await ctx.send(embed=embed)
 
-# --- Fun Commands ---
 @bot.command()
 async def slap(ctx, member: discord.Member):
     """Slap someone! Usage: !slap @user"""
@@ -1371,7 +2163,6 @@ async def remind(ctx, time: str, *, reminder: str):
     except Exception as e:
         await ctx.send(f"❌ Failed to set reminder: {e}\nUsage: `{PREFIX}remind 1h30m Do homework`")
 
-# --- Help Command ---
 class HelpCommand(commands.HelpCommand):
     def __init__(self):
         super().__init__(command_attrs={
@@ -1399,7 +2190,7 @@ class HelpCommand(commands.HelpCommand):
         if VERIFICATION_VALO and RIOT_API_KEY:
             verification_commands.append('verifyvalo')
         if VERIFICATION_FIVEM and FIVEM_SERVER:
-            verification_commands.append('verifyfivem')
+            verification_commands.extend(['verifyfivem', 'fivemserverlive'])
         if VERIFICATION_SAMP and SAMP_SERVER_IP and SAMP_SERVER_PORT:
             verification_commands.append('verifysamp')
         if VERIFICATION_ROBLOX:
@@ -1412,15 +2203,21 @@ class HelpCommand(commands.HelpCommand):
         # Moderation commands
         mod_commands = [
             'ban', 'kick', 'timeout', 'slowmode',
-            'setnick', 'addrole', 'removerole', 'getroles'
+            'setnick', 'addrole', 'removerole', 'getroles',
+            'lock', 'unlock'
         ]
         mod_desc = "\n".join(f"`{PREFIX}{cmd}`" for cmd in mod_commands)
         embed.add_field(name="🛡️ Moderation Commands", value=mod_desc, inline=False)
         
         # Game commands
-        game_commands = ['rps', 'roll', 'coinflip', 'guess']
+        game_commands = ['rps', 'roll', 'flipcoin', 'guess']
         game_desc = "\n".join(f"`{PREFIX}{cmd}`" for cmd in game_commands)
         embed.add_field(name="🎮 Game Commands", value=game_desc, inline=False)
+        
+        # Owo game commands
+        owo_commands = ['coinflip', 'slots', 'daily', 'balance']
+        owo_desc = "\n".join(f"{PREFIX}`{GAME_PREFIX}{cmd}`" for cmd in owo_commands)
+        embed.add_field(name=f"🎲 {GAME_PREFIX.capitalize()} Game Commands", value=owo_desc, inline=False)
         
         # Fun commands
         fun_commands = ['slap', 'kiss', 'hug']
@@ -1503,8 +2300,7 @@ async def on_voice_state_update(member, before, after):
                     del current_players[guild_id]
                 if guild_id in song_queues:
                     song_queues[guild_id].clear()
-
-# --- Run the Bot ---
+# Apply token heree
 TOKEN = os.getenv('DISCORD_TOKEN') or 'BOT_TOKEN'
 
 if __name__ == "__main__":
