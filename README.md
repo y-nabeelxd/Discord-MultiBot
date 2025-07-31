@@ -1,6 +1,7 @@
 # Discord MultiBot (Python)
 
 **Author:** [y-nabeelxd](https://github.com/y-nabeelxd) 
+
 A **feature-rich Discord bot** made with **Python** and **discord.py**.
 
 This bot comes with **music playback**, **Roblox verification**, **FiveM verification**, **moderation tools**, and **fun commands**.
@@ -119,4 +120,5 @@ python bot.py
 
 ## 👤 Author
 **[y-nabeelxd](https://github.com/y-nabeelxd)** 
+
 _If you like this project, star ⭐ the repository!_
