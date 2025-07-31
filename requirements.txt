@@ -2,5 +2,5 @@ discord.py==2.3.2
 yt-dlp==2023.10.13
 requests==2.31.0
 aiohttp==3.8.5
-samp-query==1.0.0
+samp-query==0.6.0
 python-dotenv==1.0.0
