@@ -19,27 +19,30 @@ import socket
 import struct
 
 # --- Configuration ---
-VERIFICATION_FIVEM = True
+VERIFICATION_FIVEM = False # If set True FiveM Verification will Enable
 FIVEM_VERIFICATION_DISCORD_REQUIRED = False  # Set to True if Discord ID must match in-game
-FIVEM_ROLE_ID = None
+FIVEM_ROLE_ID = None # Set Role ID for FiveM Verified.
 FIVEM_SERVER = None  # Set your FiveM server "IP:PORT"
-VERIFICATION_ROBLOX = False
-ROBLOX_ROLE_ID = None
-VERIFICATION_SAMP = False
-SAMP_ROLE_ID = None
-SAMP_SERVER_IP = None
-SAMP_SERVER_PORT = None
-VERIFICATION_VALO = False
+VERIFICATION_ROBLOX = False  # If set True Roblox Verification will Enable
+ROBLOX_ROLE_ID = None # Set Role ID for Roblox Verified.
+VERIFICATION_SAMP = False # If set True SA:MP Verification will Enable (Currently under maintenance)
+SAMP_ROLE_ID = None # Set Role ID for SA:MP Verified.
+SAMP_SERVER_IP = None # Set SA:MP IP using ""
+SAMP_SERVER_PORT = None # Set SA:MP PORT using ""
+VERIFICATION_VALO = False # If set True Valorant Verification will Enable (Currently under maintenance)
 RIOT_API_KEY = None
-VALORANT_ROLE_ID = None
+VALORANT_ROLE_ID = None # Set Role ID for Valorant Verified.
 REGIONS = ["americas", "europe", "asia"]  # For Valorant API
-CHANGE_NICKNAME = False
+CHANGE_NICKNAME = False # If you set it True it will change Nickname after Verification.
 BOT_OWNER = None  # Bot Owner ID
 EXTRA_ROLES_LOCK_UNLOCK = None  # Set this if you want to more role to lock/unlock
 GAME_PREFIX = "owo"  # Can be changed to "XD" or any other prefix
-COINFLIP_GIF = "https://cdn.dribbble.com/userupload/20764551/file/original-ec7c7b25323fea450739f13b38db735f.gif"
-PREFIX = "!"
+WEATHER_API_KEY = os.getenv('WEATHER_API_KEY') or 'your_api_key_here' # Get API Key from here: https://home.openweathermap.org/api_keys
+COINFLIP_GIF = "https://cdn.dribbble.com/userupload/20764551/file/original-ec7c7b25323fea450739f13b38db735f.gif" # Replace If you have any other Gif
+PREFIX = "!" # You can change Prefix from here.
 intents = discord.Intents.all()
+warnings_db = {}
+PERMA_VC = {}
 
 if not os.path.exists('db'):
     os.makedirs('db')
@@ -255,6 +258,17 @@ async def send_to_owner(guild: discord.Guild, embed: discord.Embed):
         await guild.owner.send(embed=embed)
     except Exception as e:
         print(f"Could not DM owner: {e}")
+
+def get_warnings_data():
+    try:
+        with open('db/warnings.json', 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def save_warnings_data(data):
+    with open('db/warnings.json', 'w') as f:
+        json.dump(data, f, indent=4)
 
 def get_owo_data():
     try:
@@ -1370,7 +1384,24 @@ async def stop(ctx):
 @bot.command()
 async def leave(ctx):
     """Make the bot leave the voice channel. Usage: !leave"""
-    await stop(ctx)
+    voice_client = ctx.voice_client
+    if voice_client:
+        if ctx.guild.id in PERMA_VC:
+            del PERMA_VC[ctx.guild.id]
+            
+        if ctx.guild.id in song_queues:
+            song_queues[ctx.guild.id].clear()
+        if ctx.guild.id in current_players:
+            if 'control_message' in current_players[ctx.guild.id]:
+                try:
+                    await current_players[ctx.guild.id]['control_message'].delete()
+                except:
+                    pass
+            del current_players[ctx.guild.id]
+        await voice_client.disconnect()
+        await ctx.send("⏹ Playback stopped and queue cleared")
+    else:
+        await ctx.send("I'm not in a voice channel!")
 
 @bot.command()
 @commands.has_permissions(manage_channels=True)
@@ -2043,6 +2074,405 @@ async def hug(ctx, member: discord.Member):
     await ctx.send(embed=embed)
 
 @bot.command()
+@commands.has_permissions(manage_messages=True)
+async def warn(ctx, member: discord.Member, *, reason: str = "No reason provided"):
+    """Warn a member and keep track of warnings. Usage: !warn @user [reason]"""
+    warnings_data = get_warnings_data()
+    guild_id = str(ctx.guild.id)
+    user_id = str(member.id)
+    
+    if guild_id not in warnings_data:
+        warnings_data[guild_id] = {}
+    
+    if user_id not in warnings_data[guild_id]:
+        warnings_data[guild_id][user_id] = []
+    
+    warning = {
+        "moderator": ctx.author.id,
+        "reason": reason,
+        "timestamp": datetime.datetime.now().isoformat()
+    }
+    
+    warnings_data[guild_id][user_id].append(warning)
+    save_warnings_data(warnings_data)
+    
+    embed = discord.Embed(
+        title="⚠️ Member Warned",
+        description=f"{member.mention} has been warned by {ctx.author.mention}",
+        color=discord.Color.orange()
+    )
+    embed.add_field(name="Reason", value=reason, inline=False)
+    embed.add_field(name="Total Warnings", value=len(warnings_data[guild_id][user_id]), inline=False)
+    embed.set_footer(text=f"User ID: {member.id}")
+    
+    await ctx.send(embed=embed)
+    
+    try:
+        dm_embed = discord.Embed(
+            title=f"⚠️ You've been warned in {ctx.guild.name}",
+            color=discord.Color.orange()
+        )
+        dm_embed.add_field(name="Reason", value=reason, inline=False)
+        dm_embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
+        dm_embed.add_field(name="Total Warnings", value=len(warnings_data[guild_id][user_id]), inline=False)
+        await member.send(embed=dm_embed)
+    except discord.Forbidden:
+        pass
+
+@bot.command()
+async def warnings(ctx, member: discord.Member = None):
+    """Check a member's warnings. Usage: !warnings [@user]"""
+    target = member or ctx.author
+    warnings_data = get_warnings_data()
+    guild_id = str(ctx.guild.id)
+    user_id = str(target.id)
+    
+    if guild_id not in warnings_data or user_id not in warnings_data[guild_id] or not warnings_data[guild_id][user_id]:
+        return await ctx.send(f"{target.display_name} has no warnings.")
+    
+    warnings_list = warnings_data[guild_id][user_id]
+    
+    embed = discord.Embed(
+        title=f"⚠️ Warnings for {target.display_name}",
+        description=f"Total warnings: {len(warnings_list)}",
+        color=discord.Color.orange()
+    )
+    
+    for i, warning in enumerate(warnings_list, 1):
+        moderator = ctx.guild.get_member(warning["moderator"]) or f"User ID: {warning['moderator']}"
+        timestamp = datetime.datetime.fromisoformat(warning["timestamp"]).strftime("%Y-%m-%d %H:%M")
+        embed.add_field(
+            name=f"Warning #{i}",
+            value=f"**Reason:** {warning['reason']}\n**By:** {moderator}\n**On:** {timestamp}",
+            inline=False
+        )
+    
+    await ctx.send(embed=embed)
+
+@bot.command()
+@commands.has_permissions(manage_messages=True)
+async def clearwarns(ctx, member: discord.Member):
+    """Clear all warnings for a member. Usage: !clearwarns @user"""
+    warnings_data = get_warnings_data()
+    guild_id = str(ctx.guild.id)
+    user_id = str(member.id)
+    
+    if guild_id not in warnings_data or user_id not in warnings_data[guild_id]:
+        return await ctx.send(f"{member.display_name} has no warnings to clear.")
+    
+    warnings_data[guild_id].pop(user_id)
+    save_warnings_data(warnings_data)
+    
+    embed = discord.Embed(
+        title="✅ Warnings Cleared",
+        description=f"All warnings for {member.mention} have been cleared.",
+        color=discord.Color.green()
+    )
+    await ctx.send(embed=embed)
+
+@bot.command(aliases=['clear'])
+@commands.has_permissions(manage_messages=True)
+async def purge(ctx, amount: int = 10):
+    """Purge messages from the channel (default: 10). Usage: !purge [amount]"""
+    if amount <= 0 or amount > 100:
+        return await ctx.send("Please provide a number between 1 and 100.")
+    
+    deleted = await ctx.channel.purge(limit=amount + 1)
+    
+    embed = discord.Embed(
+        title="🗑️ Messages Purged",
+        description=f"Deleted {len(deleted) - 1} messages.",
+        color=discord.Color.green()
+    )
+    msg = await ctx.send(embed=embed, delete_after=5)
+
+@bot.command()
+@commands.has_permissions(manage_nicknames=True)
+async def resetnick(ctx, member: discord.Member):
+    """Reset a member's nickname. Usage: !resetnick @user"""
+    try:
+        old_nick = member.display_name
+        await member.edit(nick=None)
+        embed = discord.Embed(
+            title="✅ Nickname Reset",
+            description=f"{member.mention}'s nickname has been reset.",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="Previous Nickname", value=old_nick, inline=True)
+        await ctx.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"❌ Failed to reset nickname: {e}")
+
+@bot.command()
+async def translate(ctx, target_lang: str, *, text: str):
+    """Translate text to another language. Usage: !translate <target_lang> <text>"""
+    try:
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {
+            'client': 'gtx',
+            'sl': 'auto',
+            'tl': target_lang,
+            'dt': 't',
+            'q': text
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    translated_text = data[0][0][0]
+                    source_lang = data[2]
+                    
+                    embed = discord.Embed(
+                        title="🌍 Translation",
+                        color=discord.Color.blue()
+                    )
+                    embed.add_field(name=f"Original ({source_lang})", value=text, inline=False)
+                    embed.add_field(name=f"Translated ({target_lang})", value=translated_text, inline=False)
+                    await ctx.send(embed=embed)
+                else:
+                    await ctx.send("❌ Failed to translate text. Please try again later.")
+    except Exception as e:
+        await ctx.send(f"❌ Translation error: {e}")
+
+@bot.command()
+async def weather(ctx, *, location: str):
+    """Get weather for a location. Usage: !weather <city>"""
+    try:
+        if WEATHER_API_KEY == 'your_api_key_here':
+            return await ctx.send("Weather API is not configured.")
+            
+        base_url = "http://api.openweathermap.org/data/2.5/weather"
+        params = {
+            'q': location,
+            'appid': WEATHER_API_KEY,
+            'units': 'metric'
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(base_url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    
+                    city = data['name']
+                    country = data['sys']['country']
+                    temp = data['main']['temp']
+                    feels_like = data['main']['feels_like']
+                    humidity = data['main']['humidity']
+                    wind = data['wind']['speed']
+                    description = data['weather'][0]['description'].title()
+                    icon = data['weather'][0]['icon']
+                    
+                    embed = discord.Embed(
+                        title=f"⛅ Weather in {city}, {country}",
+                        description=f"**{description}**",
+                        color=discord.Color.blue()
+                    )
+                    embed.set_thumbnail(url=f"http://openweathermap.org/img/wn/{icon}@2x.png")
+                    embed.add_field(name="🌡️ Temperature", value=f"{temp}°C (Feels like {feels_like}°C)", inline=True)
+                    embed.add_field(name="💧 Humidity", value=f"{humidity}%", inline=True)
+                    embed.add_field(name="🌬️ Wind Speed", value=f"{wind} m/s", inline=True)
+                    
+                    await ctx.send(embed=embed)
+                else:
+                    await ctx.send("❌ Could not find weather for that location. Please check the spelling.")
+    except Exception as e:
+        await ctx.send(f"❌ Weather lookup error: {e}")
+
+@bot.command(aliases=['calc'])
+async def calculator(ctx, *, expression: str):
+    """Evaluate a math expression. Usage: !calc <expression>"""
+    try:
+        expr = expression.replace(' ', '')
+        if not re.match(r'^[\d+\-*/().^% ]+$', expr):
+            return await ctx.send("❌ Invalid characters in expression. Only numbers and +-*/^% operators allowed.")
+        
+        expr = expr.replace('^', '**')
+        result = eval(expr, {'__builtins__': None}, {})
+        
+        embed = discord.Embed(
+            title="🧮 Calculator",
+            color=discord.Color.blue()
+        )
+        embed.add_field(name="Expression", value=expression, inline=False)
+        embed.add_field(name="Result", value=str(result), inline=False)
+        await ctx.send(embed=embed)
+    except ZeroDivisionError:
+        await ctx.send("❌ Cannot divide by zero!")
+    except Exception as e:
+        await ctx.send(f"❌ Calculation error: {e}")
+
+@bot.command()
+@commands.has_permissions(manage_messages=True)
+async def mute(ctx, member: discord.Member, *, reason: str = "No reason provided"):
+    """Mute a member in text channels. Usage: !mute @user [reason]"""
+    try:
+        muted_role = discord.utils.get(ctx.guild.roles, name="Muted")
+        
+        if not muted_role:
+            muted_role = await ctx.guild.create_role(name="Muted")
+            
+            for channel in ctx.guild.channels:
+                await channel.set_permissions(muted_role,
+                    send_messages=False,
+                    speak=False,
+                    add_reactions=False
+                )
+        
+        await member.add_roles(muted_role, reason=reason)
+        
+        embed = discord.Embed(
+            title="🔇 Member Muted",
+            description=f"{member.mention} has been muted by {ctx.author.mention}",
+            color=discord.Color.red()
+        )
+        embed.add_field(name="Reason", value=reason, inline=False)
+        await ctx.send(embed=embed)
+        
+        try:
+            dm_embed = discord.Embed(
+                title=f"🔇 You've been muted in {ctx.guild.name}",
+                color=discord.Color.red()
+            )
+            dm_embed.add_field(name="Reason", value=reason, inline=False)
+            dm_embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
+            await member.send(embed=dm_embed)
+        except discord.Forbidden:
+            pass
+            
+    except Exception as e:
+        await ctx.send(f"❌ Failed to mute member: {e}")
+
+@bot.command()
+@commands.has_permissions(manage_messages=True)
+async def unmute(ctx, member: discord.Member):
+    """Unmute a member. Usage: !unmute @user"""
+    try:
+        muted_role = discord.utils.get(ctx.guild.roles, name="Muted")
+        
+        if not muted_role or muted_role not in member.roles:
+            return await ctx.send(f"{member.display_name} is not muted.")
+        
+        await member.remove_roles(muted_role)
+        
+        embed = discord.Embed(
+            title="🔊 Member Unmuted",
+            description=f"{member.mention} has been unmuted by {ctx.author.mention}",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+        
+        try:
+            dm_embed = discord.Embed(
+                title=f"🔊 You've been unmuted in {ctx.guild.name}",
+                color=discord.Color.green()
+            )
+            await member.send(embed=dm_embed)
+        except discord.Forbidden:
+            pass
+            
+    except Exception as e:
+        await ctx.send(f"❌ Failed to unmute member: {e}")
+
+@bot.command()
+@commands.has_permissions(manage_channels=True)
+async def nuke(ctx, channel: discord.TextChannel = None):
+    """Clone and delete a channel to remove all messages. Usage: !nuke [channel]"""
+    target_channel = channel or ctx.channel
+    
+    confirmation = await ctx.send(f"⚠️ Are you sure you want to nuke {target_channel.mention}? This will delete ALL messages! React with ✅ to confirm.")
+    await confirmation.add_reaction("✅")
+    
+    def check(reaction, user):
+        return user == ctx.author and str(reaction.emoji) == "✅" and reaction.message.id == confirmation.id
+    
+    try:
+        await bot.wait_for('reaction_add', timeout=30.0, check=check)
+    except asyncio.TimeoutError:
+        await confirmation.edit(content="🚫 Channel nuke cancelled.")
+        return
+    
+    try:
+        new_channel = await target_channel.clone(reason=f"Channel nuked by {ctx.author}")
+        await target_channel.delete(reason=f"Channel nuked by {ctx.author}")
+        
+        embed = discord.Embed(
+            title="💥 Channel Nuked",
+            description=f"This channel has been nuked by {ctx.author.mention}",
+            color=discord.Color.red()
+        )
+        embed.set_image(url="https://media.giphy.com/media/oe33xf3B50fsc/giphy.gif")
+        await new_channel.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"❌ Failed to nuke channel: {e}")
+
+@bot.command()
+@commands.has_permissions(manage_channels=True)
+async def clone(ctx, channel: discord.TextChannel = None):
+    """Clone a text channel. Usage: !clone [channel]"""
+    target_channel = channel or ctx.channel
+    
+    try:
+        new_channel = await target_channel.clone()
+        await ctx.send(f"✅ Successfully cloned {target_channel.mention} to {new_channel.mention}")
+    except Exception as e:
+        await ctx.send(f"❌ Failed to clone channel: {e}")
+
+@bot.command()
+@commands.has_permissions(manage_channels=True)
+async def slowoff(ctx, channel: discord.TextChannel = None):
+    """Remove slowmode from a channel. Usage: !slowoff [channel]"""
+    target_channel = channel or ctx.channel
+    
+    try:
+        await target_channel.edit(slowmode_delay=0)
+        await ctx.send(f"✅ Slowmode removed from {target_channel.mention}")
+    except Exception as e:
+        await ctx.send(f"❌ Failed to remove slowmode: {e}")
+
+@bot.command()
+@commands.has_permissions(manage_roles=True)
+async def createrole(ctx, name: str, color: str = None, *, reason: str = None):
+    """Create a new role. Usage: !createrole <name> [hex color] [reason]"""
+    try:
+        role_color = discord.Color.default()
+        if color:
+            if color.startswith('#'):
+                color = color[1:]
+            try:
+                role_color = discord.Color(int(color, 16))
+            except ValueError:
+                await ctx.send("❌ Invalid color format. Use hex (e.g., #FF0000 or FF0000)")
+                return
+        
+        new_role = await ctx.guild.create_role(
+            name=name,
+            color=role_color,
+            reason=reason
+        )
+        
+        embed = discord.Embed(
+            title="✅ Role Created",
+            description=f"New role {new_role.mention} has been created",
+            color=role_color
+        )
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
+        await ctx.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"❌ Failed to create role: {e}")
+
+@bot.command()
+@commands.has_permissions(manage_roles=True)
+async def deleterole(ctx, *, role: discord.Role):
+    """Delete a role. Usage: !deleterole @role"""
+    try:
+        await role.delete()
+        await ctx.send(f"✅ Role `{role.name}` has been deleted")
+    except Exception as e:
+        await ctx.send(f"❌ Failed to delete role: {e}")
+
+@bot.command()
 async def poll(ctx, question: str, *options: str):
     """Create a poll. Usage: !poll "Question" "Option1" "Option2" ..."""
     if len(options) < 2:
@@ -2067,6 +2497,37 @@ async def poll(ctx, question: str, *options: str):
     
     for i in range(len(options)):
         await message.add_reaction(emojis[i])
+
+@bot.command()
+@commands.has_permissions(manage_channels=True)
+async def vc247(ctx):
+    """Make the bot stay in voice channel 24/7. Usage: !24-7vc"""
+    if not ctx.author.voice:
+        return await ctx.send("You need to be in a voice channel to use this command!")
+    
+    voice_client = ctx.voice_client
+    
+    if voice_client and voice_client.is_connected():
+        if voice_client.channel != ctx.author.voice.channel:
+            await voice_client.move_to(ctx.author.voice.channel)
+    else:
+        voice_client = await ctx.author.voice.channel.connect()
+    
+    PERMA_VC[ctx.guild.id] = True
+    
+    async def maintain_connection():
+        while PERMA_VC.get(ctx.guild.id, False):
+            if not voice_client.is_connected():
+                try:
+                    await ctx.author.voice.channel.connect()
+                except:
+                    pass
+            
+            await asyncio.sleep(10)  # Check every 10 seconds
+    
+    bot.loop.create_task(maintain_connection())
+    
+    await ctx.send("🔊 Bot will now stay in this voice channel 24/7. Use `!leave` to stop.")
 
 @bot.command()
 async def avatar(ctx, member: discord.Member = None):
@@ -2202,10 +2663,11 @@ class HelpCommand(commands.HelpCommand):
         
         # Moderation commands
         mod_commands = [
-            'ban', 'kick', 'timeout', 'slowmode',
-            'setnick', 'addrole', 'removerole', 'getroles',
-            'lock', 'unlock'
-        ]
+    'ban', 'kick', 'timeout', 'slowmode', 'slowoff',
+    'setnick', 'resetnick', 'addrole', 'removerole', 'createrole', 'deleterole',
+    'getroles', 'lock', 'unlock', 'warn', 'warnings', 'clearwarns',
+    'mute', 'unmute', 'purge', 'nuke', 'clone'
+]
         mod_desc = "\n".join(f"`{PREFIX}{cmd}`" for cmd in mod_commands)
         embed.add_field(name="🛡️ Moderation Commands", value=mod_desc, inline=False)
         
@@ -2225,7 +2687,11 @@ class HelpCommand(commands.HelpCommand):
         embed.add_field(name="😂 Fun Commands", value=fun_desc, inline=False)
         
         # Utility commands
-        utility_commands = ['poll', 'avatar', 'serverinfo', 'userinfo', 'remind']
+        utility_commands = [
+    'poll', 'avatar', 'serverinfo', 'userinfo', 'remind',
+    'translate', 'weather', 'calculator', 'calc' , 'vc247'
+]
+
         utility_desc = "\n".join(f"`{PREFIX}{cmd}`" for cmd in utility_commands)
         embed.add_field(name="🔧 Utility Commands", value=utility_desc, inline=False)
         
@@ -2288,6 +2754,9 @@ async def on_voice_state_update(member, before, after):
     for guild_id, player_data in current_players.items():
         voice_client = player_data['voice_client']
         if voice_client and voice_client.is_connected():
+            if guild_id in PERMA_VC:
+                continue
+                
             if len(voice_client.channel.members) == 1:
                 beautiful_print(f"🔇 Voice channel empty. Disconnecting...", "─")
                 await voice_client.disconnect()
@@ -2300,7 +2769,7 @@ async def on_voice_state_update(member, before, after):
                     del current_players[guild_id]
                 if guild_id in song_queues:
                     song_queues[guild_id].clear()
-# Apply token heree
+# Apply Bot token heree
 TOKEN = os.getenv('DISCORD_TOKEN') or 'BOT_TOKEN'
 
 if __name__ == "__main__":
