@@ -1,6 +1,6 @@
 # Discord MultiBot (Python)
 
-**Author:** [y-nabeelxd](https://github.com/y-nabeelxd) 
+**Author:** [y-nabeelxd](https://github.com/y-nabeelxd)
 
 A **feature-rich Discord bot** made with **Python** and **discord.py**.
 
@@ -83,13 +83,23 @@ python bot.py
 - `!setnick @user NewName` — Change nickname 
 - `!lock [#channel] [@role]` — Lock a channel 
 - `!unlock [#channel] [@role]` — Unlock a channel
+- `!nuke [channel]` - Clone and delete a channel to remove all messages
+- `!clone [channel]` - Clone a text channel
+- `!slowoff [channel]` - Remove slowmode from a channel
+- `!createrole <name> [hex color] [reason]` - Create a new role
+- `!deleterole @role` - Delete a role
+- `!resetnick @user` - Reset a member's nickname
+- `!mute @user [reason]` - Mute a member in text channels
+- `!unmute @user` - Unmute a member
+- `!clearwarns @user` - Clear all warnings for a member
 
 ---
 
 ## 🔒 Verification
 - **Roblox**: `!verifyroblox <username>` (Working ✅) 
 - **FiveM**: `!verifyfivem <username>` (Working ✅) 
-- **FiveM Server Status**: `!fivemserverlive [#channel]` (New ✨)
+- **FiveM Server Status**: `!fivemserverlive [#channel]`
+- **SA:MP Status**: `!sampstatus` - Check SA:MP server status (New ✨. But Under the maintenance ❌)
 - **SA:MP**: `!verifysamp <username>` (Under Maintenance ❌) 
 - **Valorant**: `!verifyvalo <Username#Tag>` (Under Maintenance ❌) 
 
@@ -100,6 +110,30 @@ python bot.py
 - `owo slots <amount>` - Play slots with your coins
 - `owo daily` - Claim your daily coins (300-5000)
 - `owo balance [@user]` - Check coin balance
+
+---
+
+## 🎮 Fun & Game Commands
+- `!rps rock|paper|scissors` - Play Rock Paper Scissors
+- `!roll 2d20` - Roll dice in NdN format (alias: `!dice`)
+- `!flipcoin` - Flip a coin (alias: `!flip`)
+- `!guess 5` - Guess a number between 1 and 100
+- `!slap @user` - Slap someone!
+- `!kiss @user` - Kiss someone!
+- `!hug @user` - Hug someone!
+
+---
+
+## 📆 Utility Commands
+- `!translate <target_lang> <text>` - Translate text to another language
+- `!weather <city>` - Get weather for a location
+- `!calculator <expression>` - Evaluate a math expression (alias: `!calc`)
+- `!remind <time> <message>` - Set a reminder
+- `!vc247` - Make the bot stay in voice channel 24/7
+- `!serverinfo` - Get server information
+- `!userinfo [@user]` - Get user information
+- `!avatar [@user]` - Get a user's avatar
+- `!poll "Question" "Option1" "Option2"` - Create a poll
 
 ---
 
@@ -120,5 +154,4 @@ python bot.py
 
 ## 👤 Author
 **[y-nabeelxd](https://github.com/y-nabeelxd)** 
-
 _If you like this project, star ⭐ the repository!_
