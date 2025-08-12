@@ -153,5 +153,6 @@ python bot.py
 ---
 
 ## 👤 Author
-**[y-nabeelxd](https://github.com/y-nabeelxd)** 
+**[y-nabeelxd](https://github.com/y-nabeelxd)**
+
 _If you like this project, star ⭐ the repository!_
