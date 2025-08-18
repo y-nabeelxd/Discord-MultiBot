@@ -25,6 +25,7 @@ This bot comes with **music playback**, **Roblox verification**, **FiveM verific
 ```
 Discord-MultiBot-py/
 ├── bot.py
+├── LICENCE
 ├── requirements.txt
 └── README.md
 ```
